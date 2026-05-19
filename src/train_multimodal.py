@@ -17,7 +17,7 @@ from src.utils import calculate_class_weight_from_loader
 
 
 QUANTI_COLUMNS = [
-    'QMD_sup2', 'QMD_sup1', 'QMD_0',
+    'QMD_sup2', 'QMD_sup1', 'QMD_ref',
     'QMD_inf1', 'QMD_inf2', 'QMD_inf3',
     'QMD_inf4', 'QMD_inf5', 'QMD_inf6', 'QMD_inf7',
 ]
@@ -109,7 +109,7 @@ def train_multimodal(fc_model,
             batch_y = torch.tensor(
                 train_labels_arr[batch_idx], dtype=torch.long
             ).to(device)
-
+            
             optimizer.zero_grad()
             output = fc_model(batch_X)
             loss = criterion(output, batch_y)

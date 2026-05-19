@@ -36,13 +36,15 @@ from src.train_multimodal import extract_features, train_multimodal
 from src.test import inference_multimodal
 
 # ── paths (edit before running) ──────────────────────────────────────────────
+
 DATASET_CSV      = 'path/to/final_dataset.csv'        # columns: filename, img_dir, label, fold1-fold5
 OUTPUT_BASE      = 'outputs/multimodal'
 IO_CHECKPOINT_BASE = 'outputs/image_only'             # directory containing fold1…fold5 from run_image_only.py
+
 # ─────────────────────────────────────────────────────────────────────────────
 
 QUANTI_COLUMNS = [
-    'QMD_sup2', 'QMD_sup1', 'QMD_0',
+    'QMD_sup2', 'QMD_sup1', 'QMD_ref',
     'QMD_inf1', 'QMD_inf2', 'QMD_inf3',
     'QMD_inf4', 'QMD_inf5', 'QMD_inf6', 'QMD_inf7',
 ]
@@ -95,16 +97,15 @@ def run_fold(fold):
         img_size, train=False, model_ckpt=model_ckpt,
     )
 
-    g = torch.Generator().manual_seed(CFG['SEED'])
     train_loader = DataLoader(
         train_dataset, batch_size=CFG['BATCH_SIZE'],
         shuffle=True, drop_last=True, num_workers=0,
-        worker_init_fn=seed_worker, generator=g,
+        worker_init_fn=seed_worker, generator=torch.Generator().manual_seed(CFG['SEED']),
     )
     val_loader = DataLoader(
         val_dataset, batch_size=CFG['BATCH_SIZE'],
         shuffle=False, num_workers=0,
-        worker_init_fn=seed_worker, generator=g,
+        worker_init_fn=seed_worker, generator=torch.Generator().manual_seed(CFG['SEED']),
     )
     test_loader = DataLoader(
         test_dataset, batch_size=CFG['BATCH_SIZE'],

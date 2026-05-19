@@ -34,7 +34,7 @@ OUTPUT_BASE = 'outputs/feature_only'
 # ─────────────────────────────────────────────────────────────────────────────
 
 QUANTI_COLUMNS = [
-    'QMD_sup2', 'QMD_sup1', 'QMD_0',
+    'QMD_sup2', 'QMD_sup1', 'QMD_ref',
     'QMD_inf1', 'QMD_inf2', 'QMD_inf3',
     'QMD_inf4', 'QMD_inf5', 'QMD_inf6', 'QMD_inf7',
 ]

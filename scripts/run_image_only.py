@@ -32,8 +32,8 @@ from src.train_image_only import train
 from src.test import inference_image_only
 
 # ── paths (edit before running) ──────────────────────────────────────────────
-DATASET_CSV  = 'path/to/final_dataset.csv'   # must have columns: filename, img_dir, label, fold1-fold5
-OUTPUT_BASE  = 'outputs/image_only'
+'path/to/final_dataset.csv'   # must have columns: filename, img_dir, label, fold1-fold5
+'outputs/image_only'
 # ─────────────────────────────────────────────────────────────────────────────
 
 CFG = {
@@ -76,16 +76,16 @@ def run_fold(fold):
         img_size, train=False, model_ckpt=model_ckpt,
     )
 
-    g = torch.Generator().manual_seed(CFG['SEED'])
+   # g = torch.Generator().manual_seed(CFG['SEED'])
     train_loader = DataLoader(
         train_dataset, batch_size=CFG['BATCH_SIZE'],
         shuffle=True, drop_last=True, num_workers=0,
-        worker_init_fn=seed_worker, generator=g,
+        worker_init_fn=seed_worker, generator=torch.Generator().manual_seed(CFG['SEED']),
     )
     val_loader = DataLoader(
         val_dataset, batch_size=CFG['BATCH_SIZE'],
         shuffle=False, num_workers=0,
-        worker_init_fn=seed_worker, generator=g,
+        worker_init_fn=seed_worker, generator=torch.Generator().manual_seed(CFG['SEED']),
     )
 
     fold_cfg = {**CFG, 'MODEL_CKPT': model_ckpt, 'IMG_SIZE': img_size}
