@@ -1,0 +1,185 @@
+"""
+5-fold cross-validation for the multimodal model
+(image features from a pretrained ResNet18 + quantitative measurements).
+
+The image-only model for each fold must be trained first via run_image_only.py,
+as its checkpoint is used to initialise the feature extractor.
+
+Usage (from project root):
+    python scripts/run_multimodal.py
+
+Each fold's outputs are saved under:
+    <OUTPUT_BASE>/fold<k>/
+        best_model_multimodal.pt
+        best_model_metric_multimodal.json
+        dataset_statistics.json
+        class_weights.json
+        val_result_multimodal.csv
+        results_val.csv  /  results_test.csv
+        history_multimodal.csv
+"""
+
+import os
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import json
+import pandas as pd
+import torch
+import torch.optim as optim
+from torch.utils.data import DataLoader
+import optuna
+
+from configs.config import seed_everything, seed_worker, device
+from src.dataset import CustomDataset
+from src.model import get_model, create_fc_model
+from src.train_multimodal import extract_features, train_multimodal
+from src.test import inference_multimodal
+
+# ── paths (edit before running) ──────────────────────────────────────────────
+DATASET_CSV      = 'path/to/final_dataset.csv'        # columns: filename, img_dir, label, fold1-fold5
+OUTPUT_BASE      = 'outputs/multimodal'
+IO_CHECKPOINT_BASE = 'outputs/image_only'             # directory containing fold1…fold5 from run_image_only.py
+# ─────────────────────────────────────────────────────────────────────────────
+
+QUANTI_COLUMNS = [
+    'alpha_p2', 'alpha_p1', 'alpha_0',
+    'alpha_m1', 'alpha_m2', 'alpha_m3',
+    'alpha_m4', 'alpha_m5', 'alpha_m6', 'alpha_m7',
+]
+IMAGE_FEATURE_DIM = 512   # ResNet18 penultimate-layer dimension
+
+CFG = {
+    'EPOCHS':          50,
+    'LEARNING_RATE':   1e-5,
+    'BATCH_SIZE':      8,
+    'WEIGHT_DECAY':    1e-3,
+    'LABEL_SMOOTHING': 0.08,
+    'SEED':            42,
+    'MODEL_NAME':      'resnet18',
+    'MODEL_PT':        True,
+    'N_LAYERS':        2,
+    'FIRST_HIDDEN':    384,
+    'HIDDEN_SIZE':     [32],
+    'USE_DROPOUT':     True,
+    'DROPOUT_RATE':    0.1,
+}
+
+
+def objective(trial):
+    fold = trial.number + 1
+    model_ckpt = os.path.join(OUTPUT_BASE, f'fold{fold}')
+    io_ckpt    = os.path.join(IO_CHECKPOINT_BASE, f'fold{fold}')
+    os.makedirs(model_ckpt, exist_ok=True)
+
+    seed_everything(CFG['SEED'])
+
+    filelist = pd.read_csv(DATASET_CSV).sort_values('filename').reset_index(drop=True)
+    train_df = filelist[filelist[f'fold{fold}'] == 'train'].reset_index(drop=True)
+    val_df   = filelist[filelist[f'fold{fold}'] == 'val'].reset_index(drop=True)
+    test_df  = filelist[filelist[f'fold{fold}'] == 'test'].reset_index(drop=True)
+
+    # Load the fold's pretrained image encoder
+    model, img_size = get_model(CFG['MODEL_NAME'], num_classes=2, pt=CFG['MODEL_PT'])
+    model.to(device)
+
+    # Build datasets (uses train-set statistics from the IO checkpoint directory)
+    train_dataset = CustomDataset(
+        train_df['img_dir'].values, train_df['label'].values,
+        img_size, train=True, model_ckpt=model_ckpt,
+    )
+    val_dataset = CustomDataset(
+        val_df['img_dir'].values, val_df['label'].values,
+        img_size, train=False, model_ckpt=model_ckpt,
+    )
+    test_dataset = CustomDataset(
+        test_df['img_dir'].values, test_df['label'].values,
+        img_size, train=False, model_ckpt=model_ckpt,
+    )
+
+    g = torch.Generator().manual_seed(CFG['SEED'])
+    train_loader = DataLoader(
+        train_dataset, batch_size=CFG['BATCH_SIZE'],
+        shuffle=True, drop_last=True, num_workers=0,
+        worker_init_fn=seed_worker, generator=g,
+    )
+    val_loader = DataLoader(
+        val_dataset, batch_size=CFG['BATCH_SIZE'],
+        shuffle=False, num_workers=0,
+        worker_init_fn=seed_worker, generator=g,
+    )
+    test_loader = DataLoader(
+        test_dataset, batch_size=CFG['BATCH_SIZE'],
+        shuffle=False, num_workers=0,
+        worker_init_fn=seed_worker, generator=torch.Generator().manual_seed(CFG['SEED']),
+    )
+
+    fold_cfg = {**CFG, 'MODEL_CKPT': model_ckpt, 'IO_CKPT': io_ckpt,
+                'QUANTI_COLUMNS': QUANTI_COLUMNS}
+    with open(os.path.join(model_ckpt, 'config.json'), 'w') as f:
+        json.dump(fold_cfg, f, indent=4)
+
+    # Extract fixed image features using the pretrained IO model
+    train_feats, train_paths, train_labels = extract_features(
+        model, train_loader, io_ckpt, device
+    )
+    val_feats,   val_paths,   val_labels   = extract_features(
+        model, val_loader, io_ckpt, device
+    )
+    test_feats,  test_paths,  _            = extract_features(
+        model, test_loader, io_ckpt, device
+    )
+
+    seed_everything(CFG['SEED'])   # re-seed before FC model initialisation
+
+    fc_model = create_fc_model(
+        input_size=IMAGE_FEATURE_DIM + len(QUANTI_COLUMNS),
+        n_layers=CFG['N_LAYERS'],
+        first_hidden=CFG['FIRST_HIDDEN'],
+        hidden_sizes=CFG['HIDDEN_SIZE'],
+        use_dropout=CFG['USE_DROPOUT'],
+        dropout_rate=CFG['DROPOUT_RATE'],
+    ).to(device)
+
+    optimizer = optim.Adam(fc_model.parameters(),
+                           lr=CFG['LEARNING_RATE'], weight_decay=CFG['WEIGHT_DECAY'])
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, mode='max', factor=0.5, patience=5,
+        threshold=0.001, threshold_mode='abs',
+        min_lr=CFG['LEARNING_RATE'],
+    )
+
+    best_model, best_val_f1 = train_multimodal(
+        fc_model=fc_model,
+        train_loader=train_loader,
+        train_features=train_feats, train_paths=train_paths,
+        train_labels=train_labels,  train_df=train_df,
+        val_features=val_feats,     val_paths=val_paths,
+        val_labels=val_labels,      val_df=val_df,
+        num_epochs=CFG['EPOCHS'],
+        batch_size=CFG['BATCH_SIZE'],
+        optimizer=optimizer,
+        scheduler=scheduler,
+        label_smoothing=CFG['LABEL_SMOOTHING'],
+        model_ckpt=model_ckpt,
+        device=device,
+    )
+
+    inference_multimodal(
+        best_model, val_feats, val_paths, val_df,
+        device, model_ckpt, CFG['BATCH_SIZE'], mode='val',
+    )
+    inference_multimodal(
+        best_model, test_feats, test_paths, test_df,
+        device, model_ckpt, CFG['BATCH_SIZE'], mode='test',
+    )
+
+    return best_val_f1
+
+
+if __name__ == '__main__':
+    study = optuna.create_study(
+        sampler=optuna.samplers.RandomSampler(seed=CFG['SEED'] + 1),
+        direction='maximize',
+    )
+    study.optimize(objective, n_trials=5)
