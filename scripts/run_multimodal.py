@@ -28,7 +28,6 @@ import pandas as pd
 import torch
 import torch.optim as optim
 from torch.utils.data import DataLoader
-import optuna
 
 from configs.config import seed_everything, seed_worker, device
 from src.dataset import CustomDataset
@@ -66,8 +65,7 @@ CFG = {
 }
 
 
-def objective(trial):
-    fold = trial.number + 1
+def run_fold(fold):
     model_ckpt = os.path.join(OUTPUT_BASE, f'fold{fold}')
     io_ckpt    = os.path.join(IO_CHECKPOINT_BASE, f'fold{fold}')
     os.makedirs(model_ckpt, exist_ok=True)
@@ -174,12 +172,8 @@ def objective(trial):
         device, model_ckpt, CFG['BATCH_SIZE'], mode='test',
     )
 
-    return best_val_f1
-
 
 if __name__ == '__main__':
-    study = optuna.create_study(
-        sampler=optuna.samplers.RandomSampler(seed=CFG['SEED'] + 1),
-        direction='maximize',
-    )
-    study.optimize(objective, n_trials=5)
+    for fold in range(1, 6):
+        print(f'\n{"="*40}\nFold {fold}/5\n{"="*40}')
+        run_fold(fold)
