@@ -38,10 +38,11 @@ OUTPUT_BASE  = 'outputs/image_only'
 
 CFG = {
     'EPOCHS':          500,
-    'LEARNING_RATE':   5e-5,
+    'LEARNING_RATE':   1e-5,
     'BATCH_SIZE':      8,
     'WEIGHT_DECAY':    1e-3,
-    'LABEL_SMOOTHING': 0.12,
+    'LABEL_SMOOTHING': 0.08,
+    'USE_CLASS_WEIGHT': True,
     'SEED':            42,
     'MODEL_NAME':      'resnet18',
     'MODEL_PT':        True,
@@ -94,14 +95,10 @@ def run_fold(fold):
     model.to(device)
     optimizer = optim.Adam(model.parameters(),
                            lr=CFG['LEARNING_RATE'], weight_decay=CFG['WEIGHT_DECAY'])
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode='max', factor=0.5, patience=2,
-        threshold_mode='abs', min_lr=CFG['LEARNING_RATE'],
-    )
 
     best_model, best_val_f1 = train(
         model, CFG['EPOCHS'], optimizer, train_loader, val_loader,
-        scheduler, CFG['LABEL_SMOOTHING'], device, model_ckpt,
+        None, CFG['LABEL_SMOOTHING'], device, model_ckpt,
     )
 
     test_dataset = CustomDataset(

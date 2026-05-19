@@ -13,11 +13,13 @@ from sklearn.metrics import (
 import torch
 import torch.nn as nn
 
+from src.utils import calculate_class_weight_from_loader
+
 
 QUANTI_COLUMNS = [
-    'alpha_p2', 'alpha_p1', 'alpha_0',
-    'alpha_m1', 'alpha_m2', 'alpha_m3',
-    'alpha_m4', 'alpha_m5', 'alpha_m6', 'alpha_m7',
+    'QMD_sup2', 'QMD_sup1', 'QMD_0',
+    'QMD_inf1', 'QMD_inf2', 'QMD_inf3',
+    'QMD_inf4', 'QMD_inf5', 'QMD_inf6', 'QMD_inf7',
 ]
 
 
@@ -48,23 +50,15 @@ def _build_enhanced_features(image_features, paths_list, df):
 
     Returns an (N, 512+10) float32 array.
     """
+    assert len(image_features) == len(paths_list), (
+        f"image_features length ({len(image_features)}) != paths_list length ({len(paths_list)})"
+    )
     quanti_lookup = df.set_index('img_dir')[QUANTI_COLUMNS]
     enhanced = []
     for feat, path in zip(image_features, paths_list):
         quanti = quanti_lookup.loc[path].values.astype(np.float32)
         enhanced.append(np.concatenate([feat.numpy(), quanti]))
     return np.array(enhanced, dtype=np.float32)
-
-
-def _calculate_class_weight(train_loader, num_classes=2):
-    class_counts = [0] * num_classes
-    total = 0
-    for _, _, labels in train_loader:
-        for label in labels.view(-1):
-            class_counts[label.item()] += 1
-            total += 1
-    weights = [1 - (count / total) for count in class_counts]
-    return weights, torch.FloatTensor(weights)
 
 
 def train_multimodal(fc_model,
@@ -80,7 +74,7 @@ def train_multimodal(fc_model,
     enhanced_train = _build_enhanced_features(train_features, train_paths, train_df)
     enhanced_val = _build_enhanced_features(val_features, val_paths, val_df)
 
-    cl_list, class_weight = _calculate_class_weight(train_loader)
+    cl_list, class_weight = calculate_class_weight_from_loader(train_loader)
     criterion = nn.CrossEntropyLoss(
         weight=class_weight.to(device), label_smoothing=label_smoothing
     )

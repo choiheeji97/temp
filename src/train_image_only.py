@@ -13,25 +13,14 @@ from sklearn.metrics import (
 import torch
 import torch.nn as nn
 
-
-def calculate_class_weight(train_loader, num_classes=2):
-    class_counts = [0] * num_classes
-    total_samples = 0
-
-    for _, _, labels in train_loader:
-        for label in labels.view(-1):
-            class_counts[label.item()] += 1
-            total_samples += 1
-
-    weights = [1 - (count / total_samples) for count in class_counts]
-    return weights, torch.FloatTensor(weights)
+from src.utils import calculate_class_weight_from_loader
 
 
 def train(model, num_epochs, optimizer, train_loader, val_loader, scheduler,
           label_smoothing, device, model_ckpt, seed=None):
     model.to(device)
 
-    cl_list, class_weight = calculate_class_weight(train_loader)
+    cl_list, class_weight = calculate_class_weight_from_loader(train_loader)
     print('Class weights:', class_weight)
     criterion = nn.CrossEntropyLoss(weight=class_weight.to(device),
                                     label_smoothing=label_smoothing)
@@ -88,7 +77,7 @@ def train(model, num_epochs, optimizer, train_loader, val_loader, scheduler,
 
         (_val_loss, _val_auc, _val_acc,
          _val_sensitivity, _val_precision,
-         _val_specificity, _val_f1, _val_result) = _validate(
+         _val_specificity, _val_f1, _val_result) = _validate_image_only(
             model, criterion, val_loader, device
         )
 
@@ -144,7 +133,7 @@ def train(model, num_epochs, optimizer, train_loader, val_loader, scheduler,
     return best_model, best_val_f1
 
 
-def _validate(model, criterion, val_loader, device):
+def _validate_image_only(model, criterion, val_loader, device):
     model.eval()
     val_loss = []
     probs, preds, trues, paths = [], [], [], []

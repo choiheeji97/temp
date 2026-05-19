@@ -42,9 +42,9 @@ IO_CHECKPOINT_BASE = 'outputs/image_only'             # directory containing fol
 # ─────────────────────────────────────────────────────────────────────────────
 
 QUANTI_COLUMNS = [
-    'alpha_p2', 'alpha_p1', 'alpha_0',
-    'alpha_m1', 'alpha_m2', 'alpha_m3',
-    'alpha_m4', 'alpha_m5', 'alpha_m6', 'alpha_m7',
+    'QMD_sup2', 'QMD_sup1', 'QMD_0',
+    'QMD_inf1', 'QMD_inf2', 'QMD_inf3',
+    'QMD_inf4', 'QMD_inf5', 'QMD_inf6', 'QMD_inf7',
 ]
 IMAGE_FEATURE_DIM = 512   # ResNet18 penultimate-layer dimension
 
@@ -54,9 +54,9 @@ CFG = {
     'BATCH_SIZE':      8,
     'WEIGHT_DECAY':    1e-3,
     'LABEL_SMOOTHING': 0.08,
+    'USE_CLASS_WEIGHT': True,
     'SEED':            42,
-    'MODEL_NAME':      'resnet18',
-    'MODEL_PT':        True,
+    'IMAGE_ENCODER':   'resnet18',
     'N_LAYERS':        2,
     'FIRST_HIDDEN':    384,
     'HIDDEN_SIZE':     [32],
@@ -78,7 +78,7 @@ def run_fold(fold):
     test_df  = filelist[filelist[f'fold{fold}'] == 'test'].reset_index(drop=True)
 
     # Load the fold's pretrained image encoder
-    model, img_size = get_model(CFG['MODEL_NAME'], num_classes=2, pt=CFG['MODEL_PT'])
+    model, img_size = get_model(CFG['IMAGE_ENCODER'], num_classes=2)
     model.to(device)
 
     # Build datasets (uses train-set statistics from the IO checkpoint directory)
@@ -141,11 +141,6 @@ def run_fold(fold):
 
     optimizer = optim.Adam(fc_model.parameters(),
                            lr=CFG['LEARNING_RATE'], weight_decay=CFG['WEIGHT_DECAY'])
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode='max', factor=0.5, patience=5,
-        threshold=0.001, threshold_mode='abs',
-        min_lr=CFG['LEARNING_RATE'],
-    )
 
     best_model, best_val_f1 = train_multimodal(
         fc_model=fc_model,
@@ -157,7 +152,7 @@ def run_fold(fold):
         num_epochs=CFG['EPOCHS'],
         batch_size=CFG['BATCH_SIZE'],
         optimizer=optimizer,
-        scheduler=scheduler,
+        scheduler=None,
         label_smoothing=CFG['LABEL_SMOOTHING'],
         model_ckpt=model_ckpt,
         device=device,

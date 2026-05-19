@@ -14,17 +14,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-
-def _calculate_class_weight(train_df, num_classes=2):
-    class_counts = (
-        train_df['label']
-        .value_counts()
-        .sort_index()
-        .reindex(range(num_classes), fill_value=0)
-    )
-    total = class_counts.sum()
-    weights = [1 - (class_counts[i] / total) for i in range(num_classes)]
-    return weights, torch.FloatTensor(weights)
+from src.utils import calculate_class_weight_from_df
 
 
 def train_feature_only(fc_model, quanti_columns,
@@ -42,7 +32,7 @@ def train_feature_only(fc_model, quanti_columns,
     path_val = val_df['img_dir'].values
 
     if use_class_weight:
-        cl_list, class_weight = _calculate_class_weight(train_df)
+        cl_list, class_weight = calculate_class_weight_from_df(train_df)
         criterion = nn.CrossEntropyLoss(
             weight=class_weight.to(device), label_smoothing=label_smoothing
         )
@@ -54,10 +44,6 @@ def train_feature_only(fc_model, quanti_columns,
         json.dump({i: cl_list[i] for i in range(len(cl_list))}, f, indent=4)
 
     optimizer = optim.Adam(fc_model.parameters(), lr=lr, weight_decay=wd)
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode='max', factor=0.5, patience=2,
-        threshold_mode='abs', min_lr=lr,
-    )
 
     history = {
         'epoch': [], 'train_loss': [], 'val_loss': [],
@@ -125,8 +111,6 @@ def train_feature_only(fc_model, quanti_columns,
         history['val_precision'].append(_val_precision)
         history['val_specificity'].append(_val_specificity)
         history['val_f1'].append(_val_f1)
-
-        scheduler.step(_val_f1)
 
         if _val_f1 > best_val_f1:
             best_val_f1 = _val_f1
