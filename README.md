@@ -33,6 +33,7 @@ All three models are evaluated under 5-fold cross-validation.  Best-epoch select
     ├── train_feature_only.py  # Training loop for the feature-only MLP
     ├── train_multimodal.py    # Feature extraction + training loop for multimodal MLP
     ├── test.py                # Inference functions shared by all three pipelines
+    ├── cv_summary.py          # CV summary utilities (called by run_*.py automatically)
     └── utils.py               # Class-weight computation helpers
 ```
 

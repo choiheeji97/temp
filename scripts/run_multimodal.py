@@ -38,6 +38,7 @@ from src.dataset import CustomDataset
 from src.model import get_model, create_fc_model
 from src.train_multimodal import extract_features, train_multimodal
 from src.test import inference_multimodal
+from src.cv_summary import save_cv_summary
 
 # ── paths (edit before running) ──────────────────────────────────────────────
 DATASET_CSV        = 'path/to/final_dataset.csv'   # columns: filename, img_dir, label, fold1-fold5
@@ -175,3 +176,5 @@ if __name__ == '__main__':
     for fold in range(1, 6):
         print(f'\n{"="*40}\nFold {fold}/5\n{"="*40}')
         run_fold(fold)
+
+    save_cv_summary('multimodal', OUTPUT_BASE)
