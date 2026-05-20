@@ -80,15 +80,17 @@ python scripts/run_multimodal.py
 
 ### Post-training outputs (automatic)
 
-`cv_summary.csv` and ensemble files are generated **automatically** at the end of each run script — no extra step needed.
+Once all 5 folds finish, each run script automatically generates a CV summary and ensemble outputs — no extra step needed.
 
-| Script | Auto-generates |
-|--------|---------------|
-| `run_image_only.py` | `outputs/image_only/cv_summary.csv` |
-| `run_feature_only.py` | `outputs/feature_only/cv_summary.csv` · `test_inference_ensemble.csv` · `metrics_test_ensemble.json` |
-| `run_multimodal.py` | `outputs/multimodal/cv_summary.csv` |
+All three pipelines produce the following files inside their `<OUTPUT_BASE>/` directory:
 
-To regenerate these files independently (e.g. after adding a fold or changing thresholds):
+| File | Description |
+|------|-------------|
+| `cv_summary.csv` | Per-fold rows + mean / SD / mean±SD rows for val and test splits |
+| `test_inference_ensemble.csv` | Per-sample ensemble predictions merged from all 5 folds |
+| `metrics_test_ensemble.json` | Ensemble test-set metrics (AUC, PR-AUC, Acc, Sen, Spe, Pre, F1) |
+
+To regenerate these files independently (e.g. after changing thresholds):
 
 ```bash
 python scripts/cv_summary.py   # cv_summary.csv for all three models
@@ -117,16 +119,9 @@ python scripts/cv_ensemble.py  # ensemble outputs (feature_only by default; edit
 
 ### Per-model aggregate outputs (`<OUTPUT_BASE>/`)
 
-All three pipelines produce:
-
 | File | Description |
 |------|-------------|
 | `cv_summary.csv` | Per-fold rows + mean / SD / mean±SD rows for val and test splits |
-
-Feature-only pipeline additionally produces:
-
-| File | Description |
-|------|-------------|
 | `test_inference_ensemble.csv` | Per-sample ensemble predictions merged from all 5 folds |
 | `metrics_test_ensemble.json` | Ensemble test-set metrics (AUC, PR-AUC, Acc, Sen, Spe, Pre, F1) |
 
