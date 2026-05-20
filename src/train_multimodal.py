@@ -32,7 +32,8 @@ import numpy as np
 import pandas as pd
 from tqdm.auto import tqdm
 from sklearn.metrics import (
-    roc_auc_score, recall_score, accuracy_score,
+    roc_auc_score, average_precision_score,
+    recall_score, accuracy_score,
     precision_score, f1_score,
 )
 
@@ -214,6 +215,7 @@ def train_multimodal(fc_model,
 
         _train_loss = np.mean(train_loss)
         _train_auc = roc_auc_score(trues, probs)
+        _train_prauc = average_precision_score(trues, probs)
         _train_acc = accuracy_score(trues, preds)
 
         (_val_loss, _val_auc, _val_acc,
@@ -221,6 +223,7 @@ def train_multimodal(fc_model,
          _val_specificity, _val_f1, _val_result) = _validate_multimodal(
             fc_model, criterion, enhanced_val, val_labels_arr, val_paths, device, batch_size
         )
+        _val_prauc = average_precision_score(_val_result['label'], _val_result['prob'])
 
         print(
             f'Epoch [{epoch}] '
@@ -256,6 +259,7 @@ def train_multimodal(fc_model,
                 'epoch': epoch,
                 'train_loss': _train_loss, 'val_loss': _val_loss,
                 'train_auc': _train_auc, 'val_auc': _val_auc,
+                'train_prauc': _train_prauc, 'val_prauc': _val_prauc,
                 'train_acc': _train_acc, 'val_acc': _val_acc,
                 'val_sensitivity': _val_sensitivity, 'val_precision': _val_precision,
                 'val_specificity': _val_specificity, 'val_f1': _val_f1,
