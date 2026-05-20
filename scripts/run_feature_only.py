@@ -27,6 +27,7 @@ import json
 import numpy as np
 import pandas as pd
 import torch
+import torch.optim as optim
 
 from configs.config import seed_everything, device
 from src.model import create_fc_model
@@ -45,18 +46,17 @@ QUANTI_COLUMNS = [
 ]
 
 CFG = {
-    'EPOCHS':           50,
-    'LEARNING_RATE':    1e-3,
-    'BATCH_SIZE':       8,
-    'WEIGHT_DECAY':     1e-4,
-    'LABEL_SMOOTHING':  0.0,
-    'USE_CLASS_WEIGHT': True,
-    'SEED':             42,
-    'N_LAYERS':         2,
-    'FIRST_HIDDEN':     16,
-    'HIDDEN_SIZE':      None,   # None → no intermediate hidden layer
-    'USE_DROPOUT':      True,
-    'DROPOUT_RATE':     0.2,
+    'EPOCHS':          50,
+    'LEARNING_RATE':   1e-3,
+    'BATCH_SIZE':      8,
+    'WEIGHT_DECAY':    1e-4,
+    'LABEL_SMOOTHING': 0.0,
+    'SEED':            42,
+    'N_LAYERS':        2,
+    'FIRST_HIDDEN':    16,
+    'HIDDEN_SIZE':     None,   # None → no intermediate hidden layer
+    'USE_DROPOUT':     True,
+    'DROPOUT_RATE':    0.2,
 }
 
 
@@ -85,6 +85,9 @@ def run_fold(fold):
         dropout_rate=CFG['DROPOUT_RATE'],
     ).to(device)
 
+    optimizer = optim.Adam(fc_model.parameters(),
+                           lr=CFG['LEARNING_RATE'], weight_decay=CFG['WEIGHT_DECAY'])
+
     fold_cfg = {**CFG, 'MODEL_CKPT': model_ckpt, 'QUANTI_COLUMNS': QUANTI_COLUMNS}
     with open(os.path.join(model_ckpt, 'config.json'), 'w') as f:
         json.dump(fold_cfg, f, indent=4)
@@ -96,10 +99,8 @@ def run_fold(fold):
         val_df=val_df,
         num_epochs=CFG['EPOCHS'],
         batch_size=CFG['BATCH_SIZE'],
-        lr=CFG['LEARNING_RATE'],
-        wd=CFG['WEIGHT_DECAY'],
+        optimizer=optimizer,
         label_smoothing=CFG['LABEL_SMOOTHING'],
-        use_class_weight=CFG['USE_CLASS_WEIGHT'],
         model_ckpt=model_ckpt,
         device=device,
     )

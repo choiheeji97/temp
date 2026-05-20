@@ -9,12 +9,12 @@ call in the run script.
 
 Outputs saved per fold
 ----------------------
-results_train.csv      – per-sample predictions at the best-F1 epoch (train split)
-results_val.csv        – per-sample predictions at the best-F1 epoch (val split)
-history_feature_only.csv – full per-epoch metric history
-best_model_feature_only.pt – saved model state dict
+results_train.csv               – per-sample predictions at the best-F1 epoch (train split)
+results_val.csv                 – per-sample predictions at the best-F1 epoch (val split)
+history_feature_only.csv        – full per-epoch metric history
+best_model_feature_only.pt      – saved model state dict
 best_model_metric_feature_only.json – metrics at the best-F1 epoch
-class_weights.json     – complement-frequency class weights used in training
+class_weights.json              – complement-frequency class weights used in training
 """
 
 import copy
@@ -31,14 +31,13 @@ from sklearn.metrics import (
 
 import torch
 import torch.nn as nn
-import torch.optim as optim
 
 from src.utils import calculate_class_weight_from_df
 
 
 def train_feature_only(fc_model, quanti_columns,
                        train_df, val_df,
-                       num_epochs, batch_size, lr, wd, label_smoothing, use_class_weight,
+                       num_epochs, batch_size, optimizer, label_smoothing,
                        model_ckpt, device):
     """Train the feature-only MLP and return the best model.
 
@@ -53,11 +52,8 @@ def train_feature_only(fc_model, quanti_columns,
         and ``img_dir`` (used to track sample identity in result CSVs).
     num_epochs : int
     batch_size : int
-    lr : float          Learning rate.
-    wd : float          Weight decay (L2 regularisation).
+    optimizer : torch.optim.Optimizer
     label_smoothing : float
-    use_class_weight : bool
-        Apply complement-frequency class weighting to the loss when True.
     model_ckpt : str
         Output directory.
     device : torch.device
@@ -77,19 +73,13 @@ def train_feature_only(fc_model, quanti_columns,
     y_val = val_df['label'].values
     path_val = val_df['img_dir'].values
 
-    if use_class_weight:
-        cl_list, class_weight = calculate_class_weight_from_df(train_df)
-        criterion = nn.CrossEntropyLoss(
-            weight=class_weight.to(device), label_smoothing=label_smoothing
-        )
-    else:
-        cl_list = [1.0 / 2] * 2
-        criterion = nn.CrossEntropyLoss(label_smoothing=label_smoothing)
+    cl_list, class_weight = calculate_class_weight_from_df(train_df)
+    criterion = nn.CrossEntropyLoss(
+        weight=class_weight.to(device), label_smoothing=label_smoothing
+    )
 
     with open(os.path.join(model_ckpt, 'class_weights.json'), 'w') as f:
         json.dump({i: cl_list[i] for i in range(len(cl_list))}, f, indent=4)
-
-    optimizer = optim.Adam(fc_model.parameters(), lr=lr, weight_decay=wd)
 
     history = {
         'epoch': [], 'train_loss': [], 'val_loss': [],

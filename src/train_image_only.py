@@ -27,7 +27,7 @@ from src.utils import calculate_class_weight_from_loader
 
 
 def train(model, num_epochs, optimizer, train_loader, val_loader, scheduler,
-          label_smoothing, device, model_ckpt, seed=None):
+          label_smoothing, device, model_ckpt):
     """Train the image-only CNN and return the best model.
 
     Parameters
@@ -46,9 +46,6 @@ def train(model, num_epochs, optimizer, train_loader, val_loader, scheduler,
     device : torch.device
     model_ckpt : str
         Directory to save checkpoints and result CSVs.
-    seed : int or None
-        When not None, appended to output filenames to distinguish
-        multi-seed experiments.
 
     Returns
     -------
@@ -75,17 +72,11 @@ def train(model, num_epochs, optimizer, train_loader, val_loader, scheduler,
         'val_specificity': [], 'val_f1': [],
     }
 
-    # Build output paths; seed suffix allows multi-seed comparison runs.
-    model_path = (f'{model_ckpt}/best_model_seed_{seed}.pt' if seed is not None
-                  else f'{model_ckpt}/best_model.pt')
-    metric_path = (f'{model_ckpt}/best_model_metric_seed_{seed}.json' if seed is not None
-                   else f'{model_ckpt}/best_model_metric.json')
-    train_result_path = (f'{model_ckpt}/results_train_seed_{seed}.csv' if seed is not None
-                         else f'{model_ckpt}/results_train.csv')
-    val_result_path = (f'{model_ckpt}/results_val_seed_{seed}.csv' if seed is not None
-                       else f'{model_ckpt}/results_val.csv')
-    history_path = (f'{model_ckpt}/history_seed_{seed}.csv' if seed is not None
-                    else f'{model_ckpt}/history.csv')
+    model_path        = os.path.join(model_ckpt, 'best_model.pt')
+    metric_path       = os.path.join(model_ckpt, 'best_model_metric.json')
+    train_result_path = os.path.join(model_ckpt, 'results_train.csv')
+    val_result_path   = os.path.join(model_ckpt, 'results_val.csv')
+    history_path      = os.path.join(model_ckpt, 'history.csv')
 
     for epoch in range(1, num_epochs + 1):
         model.train()
