@@ -19,22 +19,23 @@ All three models are evaluated under 5-fold cross-validation.  Best-epoch select
 ```
 .
 ├── configs/
-│   └── config.py             # Seed utilities and device selection
+│   └── config.py              # Seed utilities and device selection
 ├── scripts/
-│   ├── run_image_only.py     # Train & evaluate image-only model (5-fold)
-│   ├── run_feature_only.py   # Train & evaluate feature-only model (5-fold)
-│   ├── run_multimodal.py     # Train & evaluate multimodal model (5-fold)
-│   ├── cv_summary.py         # Aggregate 5-fold CV results for all models
-│   └── cv_ensemble.py        # Ensemble per-fold test predictions for one model
+│   ├── run_image_only.py      # Train & evaluate image-only model (5-fold CV)
+│   ├── run_feature_only.py    # Train & evaluate feature-only model (5-fold CV)
+│   ├── run_multimodal.py      # Train & evaluate multimodal model (5-fold CV)
+│   ├── cv_summary.py          # Standalone: regenerate cv_summary.csv for all models
+│   └── cv_ensemble.py         # Standalone: regenerate ensemble outputs for one model
 └── src/
-    ├── dataset.py             # CustomDataset with per-channel normalisation
-    ├── model.py               # Backbone factory + FC model builder
-    ├── train_image_only.py    # Training loop for the image-only CNN
-    ├── train_feature_only.py  # Training loop for the feature-only MLP
-    ├── train_multimodal.py    # Feature extraction + training loop for multimodal MLP
-    ├── test.py                # Inference functions shared by all three pipelines
-    ├── cv_summary.py          # CV summary utilities (called by run_*.py automatically)
-    └── utils.py               # Class-weight computation helpers
+    ├── dataset.py              # CustomDataset with per-channel normalisation
+    ├── model.py                # Backbone factory + FC model builder
+    ├── train_image_only.py     # Training loop for the image-only CNN
+    ├── train_feature_only.py   # Training loop for the feature-only MLP
+    ├── train_multimodal.py     # Feature extraction + training loop for multimodal MLP
+    ├── test.py                 # Inference functions shared by all three pipelines
+    ├── cv_summary.py           # CV summary logic imported by run_*.py
+    ├── cv_ensemble.py          # Ensemble logic imported by run_feature_only.py
+    └── utils.py                # Class-weight computation helpers
 ```
 
 ---
@@ -77,20 +78,21 @@ The image-only model **must be trained first** because its checkpoints are used 
 python scripts/run_multimodal.py
 ```
 
-### 4. CV summary (after training all folds)
+### Post-training outputs (automatic)
 
-Generates `cv_summary.csv` for each model inside its output directory.  Each file contains per-fold rows plus aggregated mean, SD, and mean±SD rows for both the validation and test splits.
+`cv_summary.csv` and the ensemble files are generated **automatically** at the end of each run script — no extra step needed.
+
+| Script | Auto-generates |
+|--------|---------------|
+| `run_image_only.py` | `outputs/image_only/cv_summary.csv` |
+| `run_feature_only.py` | `outputs/feature_only/cv_summary.csv`, `test_inference_ensemble.csv`, `metrics_test_ensemble.json` |
+| `run_multimodal.py` | `outputs/multimodal/cv_summary.csv` |
+
+To regenerate these files independently (e.g. after adding a fold or changing thresholds):
 
 ```bash
-python scripts/cv_summary.py
-```
-
-### 5. Test-set ensemble (feature-only by default)
-
-Merges per-fold `test_inference.csv` files, computes the mean probability across folds, and writes ensemble predictions and metrics.  Edit `OUTPUT_BASE` at the top of the script to target a different model.
-
-```bash
-python scripts/cv_ensemble.py
+python scripts/cv_summary.py   # cv_summary.csv for all three models
+python scripts/cv_ensemble.py  # ensemble outputs for feature_only (edit OUTPUT_BASE for others)
 ```
 
 ---
