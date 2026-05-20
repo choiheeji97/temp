@@ -1,11 +1,6 @@
-"""
-Standalone script to generate cv_summary.csv for all three model pipelines.
+"""Standalone script to generate cv_summary.csv for all three model pipelines.
 
-Internally calls ``src.cv_summary.save_cv_summary``; the same function is
-also called automatically at the end of each run_*.py script.
-
-Usage (from project root):
-    python scripts/cv_summary.py
+Usage: python scripts/cv_summary.py
 """
 
 import os
@@ -23,7 +18,7 @@ MODELS = {
 if __name__ == '__main__':
     for model_name, output_base in MODELS.items():
         if not os.path.isdir(output_base):
-            print(f'[{model_name}] Directory not found: {output_base} — skipping.')
+            print(f'[{model_name}] Directory not found: {output_base}, skipping.')
             continue
         save_cv_summary(model_name, output_base)
         print()

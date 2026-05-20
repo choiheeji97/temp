@@ -1,9 +1,4 @@
-"""
-CV summary utilities shared by all three run pipelines.
-
-Call ``save_cv_summary(model_name, output_base)`` at the end of a run script
-to automatically generate and save cv_summary.csv once all folds are done.
-"""
+"""CV summary utilities for all three pipelines."""
 
 import os
 
@@ -44,14 +39,7 @@ def get_metrics(model_name, output_base, fold):
 
 
 def cv_results(model_name, output_base, n_folds=5):
-    """Build a summary DataFrame of n-fold CV results for one model.
-
-    Returned DataFrame rows:
-        fold 1…n  – per-fold val and test metrics (numeric)
-        mean      – column-wise mean across folds, per split
-        sd        – column-wise standard deviation, per split
-        mean±sd   – formatted string "X.XX±X.XX" for each metric, per split
-    """
+    """Build an n-fold CV summary DataFrame with per-fold, mean, sd, and mean+/-sd rows."""
     res_all = pd.concat(
         [get_metrics(model_name, output_base, fold) for fold in range(1, n_folds + 1)],
         axis=0,
@@ -78,7 +66,7 @@ def cv_results(model_name, output_base, n_folds=5):
     sd_df.insert(0, 'fold', 'sd')
     sd_df.insert(0, 'model', model_name)
 
-    # sort so 'val' appears before 'test'
+    # 'val' before 'test' in sort order
     final_df = pd.concat(
         [res_all, mean_df, sd_df, mean_sd_df],
         ignore_index=True,
@@ -88,11 +76,7 @@ def cv_results(model_name, output_base, n_folds=5):
 
 
 def save_cv_summary(model_name, output_base, n_folds=5):
-    """Generate CV summary and save to ``<output_base>/cv_summary.csv``.
-
-    Intended to be called at the end of a run_*.py script after all folds
-    have completed.
-    """
+    """Generate CV summary and save to <output_base>/cv_summary.csv."""
     print(f'\n[cv_summary] Building CV summary for {model_name} ...')
     df = cv_results(model_name, output_base, n_folds)
     save_path = os.path.join(output_base, 'cv_summary.csv')

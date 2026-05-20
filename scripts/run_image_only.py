@@ -1,26 +1,6 @@
-"""
-5-fold cross-validation for the image-only CNN classifier.
+"""5-fold cross-validation for the image-only CNN classifier.
 
-For each fold the script:
-  1. Splits the dataset according to the pre-assigned fold column.
-  2. Computes training-set normalisation statistics and saves them.
-  3. Trains a ResNet18 with class-weighted cross-entropy + label smoothing.
-  4. Runs inference on the held-out test split using the best checkpoint.
-
-Usage (from project root):
-    python scripts/run_image_only.py
-
-Each fold's outputs are saved under <OUTPUT_BASE>/fold<k>/:
-    best_model.pt
-    best_model_metric.json
-    dataset_statistics.json
-    class_weights.json
-    results_train.csv          – train-split predictions at the best-F1 epoch
-    results_val.csv            – val-split predictions at the best-F1 epoch
-    test_inference.csv         – test-split predictions from final inference
-    metrics_test.json          – full test metrics (AUC, PR-AUC, Acc, Sen, Spe, Pre, F1)
-    history.csv                – per-epoch metric history
-    config.json                – hyperparameters used for this fold
+Usage: python scripts/run_image_only.py
 """
 
 import os
@@ -78,7 +58,7 @@ def run_fold(fold):
     )
     print(f'[fold {fold}] model={model.__class__.__name__}, img_size={img_size}')
 
-    # Training split: compute and save per-channel normalisation statistics.
+    # training split: compute and save per-channel normalization stats
     train_dataset = CustomDataset(
         train_df['img_dir'].values, train_df['label'].values,
         img_size, train=True, model_ckpt=model_ckpt,
@@ -114,7 +94,7 @@ def run_fold(fold):
         None, CFG['LABEL_SMOOTHING'], device, model_ckpt,
     )
 
-    # Build test DataLoader after training so it loads from the saved statistics.
+    # build test DataLoader after training so it uses the saved normalization stats
     test_dataset = CustomDataset(
         test_df['img_dir'].values, test_df['label'].values,
         img_size, train=False, model_ckpt=model_ckpt,

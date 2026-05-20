@@ -1,12 +1,4 @@
-"""
-Training loop for the image-only CNN classifier.
-
-``train`` runs a standard supervised training loop with per-epoch
-validation.  The best checkpoint (selected by validation F1) is saved
-to ``<model_ckpt>/best_model.pt``.  At the best epoch, per-sample
-predictions for the training and validation splits are written to
-``results_train.csv`` and ``results_val.csv`` respectively.
-"""
+"""Training loop for the image-only CNN classifier."""
 
 import copy
 import os
@@ -29,30 +21,7 @@ from src.utils import calculate_class_weight_from_loader
 
 def train(model, num_epochs, optimizer, train_loader, val_loader, scheduler,
           label_smoothing, device, model_ckpt):
-    """Train the image-only CNN and return the best model.
-
-    Parameters
-    ----------
-    model : nn.Module
-        CNN backbone with a two-class head (see ``src/model.py``).
-    num_epochs : int
-        Total number of training epochs.
-    optimizer : torch.optim.Optimizer
-    train_loader, val_loader : DataLoader
-        Must yield (path, image, label) tuples.
-    scheduler : lr_scheduler or None
-        ReduceLROnPlateau is expected; called with the validation F1 score.
-    label_smoothing : float
-        Label-smoothing coefficient for ``nn.CrossEntropyLoss``.
-    device : torch.device
-    model_ckpt : str
-        Directory to save checkpoints and result CSVs.
-
-    Returns
-    -------
-    best_model : nn.Module   (deepcopy at the best-F1 epoch)
-    best_val_f1 : float
-    """
+    """Train the image-only CNN; returns (best_model, best_val_f1)."""
     model.to(device)
 
     cl_list, class_weight = calculate_class_weight_from_loader(train_loader)

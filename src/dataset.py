@@ -1,12 +1,4 @@
-"""
-Custom PyTorch Dataset for loading fundus (or other medical) images.
-
-On the *training* split, per-channel mean and standard deviation are
-computed from the raw pixel values and persisted to
-``<model_ckpt>/dataset_statistics.json``.  All other splits load those
-saved statistics so that normalisation is anchored to the training
-distribution — preventing data leakage through the normalisation step.
-"""
+"""Dataset with per-channel normalization anchored to training split statistics."""
 
 import numpy as np
 import cv2
@@ -20,22 +12,10 @@ from torchvision import transforms
 
 
 class CustomDataset(Dataset):
-    """Image dataset with lazy loading and per-channel normalisation.
+    """Image dataset with lazy loading and per-channel normalization.
 
-    Parameters
-    ----------
-    image_path_list : array-like of str
-        Absolute paths to image files.
-    label_list : array-like of int or None
-        Integer class labels (0 / 1).  Pass ``None`` for unlabelled
-        inference sets (``__getitem__`` then returns only path and image).
-    input_size : int
-        Both spatial dimensions are resized to this value (square crop).
-    train : bool
-        When ``True``, compute and save dataset statistics from this split.
-        When ``False``, load previously saved statistics.
-    model_ckpt : str
-        Directory used to read / write ``dataset_statistics.json``.
+    If label_list is None, __getitem__ returns (path, image) without a label.
+    Set train=True on the training split to compute and save normalization stats.
     """
 
     def __init__(self, image_path_list, label_list, input_size, train=False, model_ckpt=None):

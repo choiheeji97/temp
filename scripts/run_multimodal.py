@@ -1,26 +1,7 @@
-"""
-5-fold cross-validation for the multimodal model.
+"""5-fold cross-validation for the multimodal model.
 
-The multimodal model fuses 512-dim image features (extracted from a
-per-fold pretrained ResNet18 checkpoint) with quantitative measurements
-via a small MLP.  The image-only model for each fold **must be trained
-first** via ``run_image_only.py``, as its checkpoint is used to initialise
-the feature extractor.
-
-Usage (from project root):
-    python scripts/run_multimodal.py
-
-Each fold's outputs are saved under <OUTPUT_BASE>/fold<k>/:
-    best_model_multimodal.pt
-    best_model_metric_multimodal.json
-    dataset_statistics.json
-    class_weights.json
-    results_train.csv              – train-split predictions at the best-F1 epoch
-    results_val.csv                – val-split predictions at the best-F1 epoch
-    test_inference.csv             – test-split predictions from final inference
-    metrics_test.json              – full test metrics (AUC, PR-AUC, Acc, Sen, Spe, Pre, F1)
-    history_multimodal.csv         – per-epoch metric history
-    config.json                    – hyperparameters used for this fold
+Requires run_image_only.py to be run first.
+Usage: python scripts/run_multimodal.py
 """
 
 import os
@@ -84,11 +65,11 @@ def run_fold(fold):
     val_df   = filelist[filelist[f'fold{fold}'] == 'val'].reset_index(drop=True)
     test_df  = filelist[filelist[f'fold{fold}'] == 'test'].reset_index(drop=True)
 
-    # Load the pretrained image encoder for this fold.
+    # load pretrained image encoder for this fold
     model, img_size = get_model(CFG['IMAGE_ENCODER'], num_classes=2)
     model.to(device)
 
-    # Training split: compute and save per-channel normalisation statistics.
+    # training split: compute and save per-channel normalization stats
     train_dataset = CustomDataset(
         train_df['img_dir'].values, train_df['label'].values,
         img_size, train=True, model_ckpt=model_ckpt,
@@ -126,7 +107,7 @@ def run_fold(fold):
     with open(os.path.join(model_ckpt, 'config.json'), 'w') as f:
         json.dump(fold_cfg, f, indent=4)
 
-    # Extract fixed image features using the pretrained image-only encoder.
+    # extract fixed image features using the pretrained image-only encoder
     train_feats, train_paths, train_labels = extract_features(
         model, train_loader, io_ckpt, device
     )
@@ -137,7 +118,7 @@ def run_fold(fold):
         model, test_loader, io_ckpt, device
     )
 
-    seed_everything(CFG['SEED'])   # re-seed before MLP weight initialisation
+    seed_everything(CFG['SEED'])   # re-seed before MLP weight init
 
     fc_model = create_fc_model(
         input_size=IMAGE_FEATURE_DIM + len(QUANTI_COLUMNS),

@@ -1,35 +1,10 @@
-"""
-Utility functions for computing inverse-frequency class weights.
-
-Two variants are provided: one that iterates over a DataLoader (used when
-the dataset is already wrapped in a loader) and one that operates directly
-on a DataFrame (used for the feature-only pipeline where no image loading
-is required).
-
-Weight formula: w_c = 1 - (n_c / N), so the minority class receives a
-higher weight.  This is the complement-frequency weighting scheme.
-"""
+"""Class weight utilities using complement-frequency weighting: w_c = 1 - n_c/N."""
 
 import torch
 
 
 def calculate_class_weight_from_loader(train_loader, num_classes=2):
-    """Compute per-class weights by iterating over a DataLoader.
-
-    Parameters
-    ----------
-    train_loader : DataLoader
-        Must yield (path, image, label) tuples.
-    num_classes : int
-        Number of distinct class labels (default 2 for binary tasks).
-
-    Returns
-    -------
-    weights : list of float
-        Complement-frequency weight for each class.
-    class_weight_tensor : torch.FloatTensor
-        Same values as a 1-D tensor, ready to pass to ``nn.CrossEntropyLoss``.
-    """
+    """Compute per-class complement-frequency weights from a DataLoader; returns (list, tensor)."""
     class_counts = [0] * num_classes
     total = 0
     for _, _, labels in train_loader:
@@ -41,20 +16,7 @@ def calculate_class_weight_from_loader(train_loader, num_classes=2):
 
 
 def calculate_class_weight_from_df(train_df, num_classes=2):
-    """Compute per-class weights from a DataFrame ``label`` column.
-
-    Parameters
-    ----------
-    train_df : pd.DataFrame
-        Must contain an integer ``label`` column.
-    num_classes : int
-        Number of distinct class labels (default 2 for binary tasks).
-
-    Returns
-    -------
-    weights : list of float
-    class_weight_tensor : torch.FloatTensor
-    """
+    """Compute per-class complement-frequency weights from a DataFrame label column; returns (list, tensor)."""
     class_counts = (
         train_df['label']
         .value_counts()

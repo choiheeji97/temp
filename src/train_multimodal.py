@@ -1,27 +1,6 @@
-"""
-Training loop for the multimodal model.
+"""Training loop for the multimodal model (image features + quantitative measurements).
 
-The multimodal model concatenates 512-dim image feature vectors (extracted
-from a pretrained ResNet18 image-only checkpoint) with quantitative
-measurements and feeds the combined representation into a small MLP.
-
-Workflow
---------
-1. ``extract_features`` loads the pretrained image encoder and extracts
-   fixed feature vectors for the train / val / test splits.
-2. ``_build_enhanced_features`` concatenates each image feature vector with
-   the corresponding row of quantitative measurements.
-3. ``train_multimodal`` trains the MLP head on the combined features.
-
-Outputs saved per fold
-----------------------
-results_train.csv               – per-sample predictions at the best-F1 epoch (train split)
-results_val.csv                 – per-sample predictions at the best-F1 epoch (val split)
-history_multimodal.csv          – full per-epoch metric history
-best_model_multimodal.pt        – saved MLP state dict
-best_model_metric_multimodal.json – metrics at the best-F1 epoch
-val_result_multimodal.csv       – alias for results_val.csv (kept for training-time snapshots)
-class_weights.json              – complement-frequency class weights
+run_image_only.py must be run first; its checkpoint is used to extract image features.
 """
 
 import copy
@@ -51,28 +30,7 @@ QUANTI_COLUMNS = [
 
 
 def extract_features(model, data_loader, checkpoint_path, device):
-    """Extract 512-dim feature vectors from the pretrained image encoder.
-
-    The classification head (last child module) is stripped so the encoder
-    outputs pooled spatial features of shape (B, 512).
-
-    Parameters
-    ----------
-    model : nn.Module
-        Full ResNet18 model (with ``fc`` head); weights are loaded from
-        ``checkpoint_path/best_model.pt`` inside this function.
-    data_loader : DataLoader
-        Yields (path, image, label) tuples.
-    checkpoint_path : str
-        Directory containing ``best_model.pt``.
-    device : torch.device
-
-    Returns
-    -------
-    features : torch.Tensor  shape (N, 512)
-    paths    : list of str
-    labels   : list of int
-    """
+    """Extract 512-dim feature vectors from the pretrained encoder (head removed); returns (features, paths, labels)."""
     model.load_state_dict(torch.load(checkpoint_path + '/best_model.pt',
                                      map_location=device))
     feature_extractor = nn.Sequential(*list(model.children())[:-1])
@@ -85,7 +43,7 @@ def extract_features(model, data_loader, checkpoint_path, device):
         for path, images, labels in tqdm(iter(data_loader), desc='Extracting features'):
             images = images.to(device)
             feats = feature_extractor(images)
-            feats = feats.squeeze(-1).squeeze(-1)  # [B, 512, 1, 1] → [B, 512]
+            feats = feats.squeeze(-1).squeeze(-1)  # (B, 512, 1, 1) -> (B, 512)
             features_list.append(feats.cpu())
             paths_list.extend(path)
             labels_list.extend(labels.numpy())
@@ -94,22 +52,7 @@ def extract_features(model, data_loader, checkpoint_path, device):
 
 
 def _build_enhanced_features(image_features, paths_list, df):
-    """Concatenate image feature vectors with quantitative measurements.
-
-    Each sample's 512-dim image feature is appended with the 10-dim
-    quantitative measurement vector looked up by image path, producing an
-    (N, 522) float32 array.
-
-    Parameters
-    ----------
-    image_features : torch.Tensor   shape (N, 512)
-    paths_list : list of str        absolute image paths (same order as features)
-    df : pd.DataFrame               must contain ``img_dir`` and ``QUANTI_COLUMNS``
-
-    Returns
-    -------
-    np.ndarray  shape (N, 512 + len(QUANTI_COLUMNS)), dtype float32
-    """
+    """Concatenate 512-dim image features with quantitative measurements; returns float32 array of shape (N, 522)."""
     assert len(image_features) == len(paths_list), (
         f"image_features length ({len(image_features)}) != paths_list length ({len(paths_list)})"
     )
@@ -126,36 +69,7 @@ def train_multimodal(fc_model,
                      val_features, val_paths, val_labels, val_df,
                      num_epochs, batch_size, optimizer, scheduler, label_smoothing,
                      model_ckpt, device):
-    """Train the multimodal MLP and return the best model.
-
-    Parameters
-    ----------
-    fc_model : nn.Module
-        MLP created by ``create_fc_model`` with
-        input_size = IMAGE_FEATURE_DIM + len(QUANTI_COLUMNS).
-    train_loader : DataLoader
-        Used solely to compute class weights (iterates once at startup).
-    train_features : torch.Tensor   shape (N_train, 512)
-    train_paths    : list of str
-    train_labels   : list of int
-    train_df       : pd.DataFrame   must contain ``img_dir`` and ``QUANTI_COLUMNS``
-    val_features   : torch.Tensor   shape (N_val, 512)
-    val_paths      : list of str
-    val_labels     : list of int
-    val_df         : pd.DataFrame
-    num_epochs     : int
-    batch_size     : int
-    optimizer      : torch.optim.Optimizer
-    scheduler      : lr_scheduler or None
-    label_smoothing: float
-    model_ckpt     : str    output directory
-    device         : torch.device
-
-    Returns
-    -------
-    best_model : nn.Module   (deepcopy at the best-F1 epoch)
-    best_val_f1 : float
-    """
+    """Train the multimodal MLP; returns (best_model, best_val_f1)."""
     fc_model.to(device)
 
     train_labels_arr = np.array(train_labels)

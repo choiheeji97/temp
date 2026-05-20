@@ -1,13 +1,6 @@
-"""
-Standalone script to ensemble test predictions for a given model pipeline.
+"""Standalone script to ensemble test predictions across folds.
 
-Internally calls ``src.cv_ensemble.save_ensemble``; the same function is
-also called automatically at the end of run_feature_only.py.
-
-Edit OUTPUT_BASE to target a different model pipeline.
-
-Usage (from project root):
-    python scripts/cv_ensemble.py
+Usage: python scripts/cv_ensemble.py
 """
 
 import os

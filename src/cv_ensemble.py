@@ -1,9 +1,4 @@
-"""
-Ensemble utilities shared across pipelines.
-
-Call ``save_ensemble(output_base)`` at the end of a run script to
-automatically merge per-fold test predictions and save ensemble outputs.
-"""
+"""Ensemble utilities for merging per-fold test predictions."""
 
 import json
 import os
@@ -26,15 +21,7 @@ def load_fold_inference(output_base, fold):
 
 
 def build_ensemble(output_base, n_folds=5, threshold=0.5):
-    """Merge per-fold test inferences and compute ensemble probability/prediction.
-
-    Returns
-    -------
-    pd.DataFrame with columns:
-        image_path, label,
-        prob_fold1 … prob_foldN, pred_fold1 … pred_foldN,
-        prob_ensemble, pred_ensemble
-    """
+    """Merge per-fold test inferences and return DataFrame with ensemble prob/pred."""
     merged = load_fold_inference(output_base, 1)
     for fold in range(2, n_folds + 1):
         merged = merged.merge(
@@ -68,11 +55,7 @@ def compute_ensemble_metrics(df):
 
 
 def save_ensemble(output_base, n_folds=5, threshold=0.5):
-    """Build ensemble, save test_inference_ensemble.csv and metrics_test_ensemble.json.
-
-    Intended to be called at the end of a run_*.py script after all folds
-    have completed.
-    """
+    """Build ensemble and save test_inference_ensemble.csv and metrics_test_ensemble.json."""
     print(f'\n[cv_ensemble] Building {n_folds}-fold ensemble from {output_base} ...')
     ensemble_df = build_ensemble(output_base, n_folds, threshold)
     print(f'[cv_ensemble] Ensemble test set size: {len(ensemble_df)} samples')

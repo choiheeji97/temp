@@ -1,22 +1,6 @@
-"""
-5-fold cross-validation for the feature-only (quantitative measurements) MLP.
+"""5-fold cross-validation for the feature-only (tabular features) MLP.
 
-Only the tabular quantitative features (no image data) are used.  The MLP
-is trained directly on the measurement columns listed in ``QUANTI_COLUMNS``.
-
-Usage (from project root):
-    python scripts/run_feature_only.py
-
-Each fold's outputs are saved under <OUTPUT_BASE>/fold<k>/:
-    best_model_feature_only.pt
-    best_model_metric_feature_only.json
-    class_weights.json
-    results_train.csv              – train-split predictions at the best-F1 epoch
-    results_val.csv                – val-split predictions at the best-F1 epoch
-    test_inference.csv             – test-split predictions from final inference
-    metrics_test.json              – full test metrics (AUC, PR-AUC, Acc, Sen, Spe, Pre, F1)
-    history_feature_only.csv       – per-epoch metric history
-    config.json                    – hyperparameters used for this fold
+Usage: python scripts/run_feature_only.py
 """
 
 import os
@@ -74,7 +58,7 @@ def run_fold(fold):
     val_df   = filelist[filelist[f'fold{fold}'] == 'val'].reset_index(drop=True)
     test_df  = filelist[filelist[f'fold{fold}'] == 'test'].reset_index(drop=True)
 
-    # Clamp intermediate hidden size to at most half of first_hidden.
+    # clamp intermediate hidden size to at most half of first_hidden
     hidden_sizes = ([] if CFG['HIDDEN_SIZE'] is None
                     else [min(CFG['HIDDEN_SIZE'], CFG['FIRST_HIDDEN'] // 2)])
 

@@ -1,21 +1,4 @@
-"""
-Training loop for the feature-only (quantitative measurements) MLP.
-
-The model is a small fully-connected network (see ``src/model.py``)
-trained directly on tabular quantitative features without any image data.
-Because no DataLoader is used, the per-epoch shuffle is implemented via
-``np.random.permutation`` seeded through the global ``seed_everything``
-call in the run script.
-
-Outputs saved per fold
-----------------------
-results_train.csv               – per-sample predictions at the best-F1 epoch (train split)
-results_val.csv                 – per-sample predictions at the best-F1 epoch (val split)
-history_feature_only.csv        – full per-epoch metric history
-best_model_feature_only.pt      – saved model state dict
-best_model_metric_feature_only.json – metrics at the best-F1 epoch
-class_weights.json              – complement-frequency class weights used in training
-"""
+"""Training loop for the feature-only (tabular features) MLP."""
 
 import copy
 import os
@@ -40,30 +23,7 @@ def train_feature_only(fc_model, quanti_columns,
                        train_df, val_df,
                        num_epochs, batch_size, optimizer, label_smoothing,
                        model_ckpt, device):
-    """Train the feature-only MLP and return the best model.
-
-    Parameters
-    ----------
-    fc_model : nn.Module
-        MLP created by ``create_fc_model``.
-    quanti_columns : list of str
-        Column names in ``train_df`` / ``val_df`` used as input features.
-    train_df, val_df : pd.DataFrame
-        Must contain columns listed in ``quanti_columns``, ``label``,
-        and ``img_dir`` (used to track sample identity in result CSVs).
-    num_epochs : int
-    batch_size : int
-    optimizer : torch.optim.Optimizer
-    label_smoothing : float
-    model_ckpt : str
-        Output directory.
-    device : torch.device
-
-    Returns
-    -------
-    best_model : nn.Module   (deepcopy at the best-F1 epoch)
-    best_val_f1 : float
-    """
+    """Train the feature-only MLP; returns (best_model, best_val_f1)."""
     fc_model.to(device)
 
     X_train = train_df[quanti_columns].values.astype(np.float32)
