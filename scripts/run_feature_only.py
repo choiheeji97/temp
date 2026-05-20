@@ -1,17 +1,22 @@
 """
-5-fold cross-validation for the feature-only (quantitative) model.
+5-fold cross-validation for the feature-only (quantitative measurements) MLP.
+
+Only the tabular quantitative features (no image data) are used.  The MLP
+is trained directly on the measurement columns listed in ``QUANTI_COLUMNS``.
 
 Usage (from project root):
     python scripts/run_feature_only.py
 
-Each fold's outputs are saved under:
-    <OUTPUT_BASE>/fold<k>/
-        best_model_feature_only.pt
-        best_model_metric_feature_only.json
-        class_weights.json
-        train_result_feature_only.csv  /  val_result_feature_only.csv
-        results_test.csv
-        history_feature_only.csv
+Each fold's outputs are saved under <OUTPUT_BASE>/fold<k>/:
+    best_model_feature_only.pt
+    best_model_metric_feature_only.json
+    class_weights.json
+    results_train.csv              – train-split predictions at the best-F1 epoch
+    results_val.csv                – val-split predictions at the best-F1 epoch
+    test_inference.csv             – test-split predictions from final inference
+    metrics_test.json              – full test metrics (AUC, PR-AUC, Acc, Sen, Spe, Pre, F1)
+    history_feature_only.csv       – per-epoch metric history
+    config.json                    – hyperparameters used for this fold
 """
 
 import os
@@ -40,22 +45,23 @@ QUANTI_COLUMNS = [
 ]
 
 CFG = {
-    'EPOCHS':          50,
-    'LEARNING_RATE':   1e-3,
-    'BATCH_SIZE':      8,
-    'WEIGHT_DECAY':    1e-4,
-    'LABEL_SMOOTHING': 0.0,
+    'EPOCHS':           50,
+    'LEARNING_RATE':    1e-3,
+    'BATCH_SIZE':       8,
+    'WEIGHT_DECAY':     1e-4,
+    'LABEL_SMOOTHING':  0.0,
     'USE_CLASS_WEIGHT': True,
-    'SEED':            42,
-    'N_LAYERS':        2,
-    'FIRST_HIDDEN':    16,
-    'HIDDEN_SIZE':     None,   # None → no intermediate hidden layer
-    'USE_DROPOUT':     True,
-    'DROPOUT_RATE':    0.2,
+    'SEED':             42,
+    'N_LAYERS':         2,
+    'FIRST_HIDDEN':     16,
+    'HIDDEN_SIZE':      None,   # None → no intermediate hidden layer
+    'USE_DROPOUT':      True,
+    'DROPOUT_RATE':     0.2,
 }
 
 
 def run_fold(fold):
+    """Train and evaluate the feature-only MLP for a single fold."""
     model_ckpt = os.path.join(OUTPUT_BASE, f'fold{fold}')
     os.makedirs(model_ckpt, exist_ok=True)
 
@@ -66,6 +72,7 @@ def run_fold(fold):
     val_df   = filelist[filelist[f'fold{fold}'] == 'val'].reset_index(drop=True)
     test_df  = filelist[filelist[f'fold{fold}'] == 'test'].reset_index(drop=True)
 
+    # Clamp intermediate hidden size to at most half of first_hidden.
     hidden_sizes = ([] if CFG['HIDDEN_SIZE'] is None
                     else [min(CFG['HIDDEN_SIZE'], CFG['FIRST_HIDDEN'] // 2)])
 
@@ -97,8 +104,8 @@ def run_fold(fold):
         device=device,
     )
 
-    X_test  = test_df[QUANTI_COLUMNS].values.astype(np.float32)
-    y_test  = test_df['label'].values
+    X_test    = test_df[QUANTI_COLUMNS].values.astype(np.float32)
+    y_test    = test_df['label'].values
     path_test = test_df['img_dir'].values
 
     inference_feature_only(

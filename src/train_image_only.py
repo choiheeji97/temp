@@ -1,3 +1,13 @@
+"""
+Training loop for the image-only CNN classifier.
+
+``train`` runs a standard supervised training loop with per-epoch
+validation.  The best checkpoint (selected by validation F1) is saved
+to ``<model_ckpt>/best_model.pt``.  At the best epoch, per-sample
+predictions for the training and validation splits are written to
+``results_train.csv`` and ``results_val.csv`` respectively.
+"""
+
 import copy
 import os
 import json
@@ -18,6 +28,33 @@ from src.utils import calculate_class_weight_from_loader
 
 def train(model, num_epochs, optimizer, train_loader, val_loader, scheduler,
           label_smoothing, device, model_ckpt, seed=None):
+    """Train the image-only CNN and return the best model.
+
+    Parameters
+    ----------
+    model : nn.Module
+        CNN backbone with a two-class head (see ``src/model.py``).
+    num_epochs : int
+        Total number of training epochs.
+    optimizer : torch.optim.Optimizer
+    train_loader, val_loader : DataLoader
+        Must yield (path, image, label) tuples.
+    scheduler : lr_scheduler or None
+        ReduceLROnPlateau is expected; called with the validation F1 score.
+    label_smoothing : float
+        Label-smoothing coefficient for ``nn.CrossEntropyLoss``.
+    device : torch.device
+    model_ckpt : str
+        Directory to save checkpoints and result CSVs.
+    seed : int or None
+        When not None, appended to output filenames to distinguish
+        multi-seed experiments.
+
+    Returns
+    -------
+    best_model : nn.Module   (deepcopy at the best-F1 epoch)
+    best_val_f1 : float
+    """
     model.to(device)
 
     cl_list, class_weight = calculate_class_weight_from_loader(train_loader)
@@ -38,14 +75,15 @@ def train(model, num_epochs, optimizer, train_loader, val_loader, scheduler,
         'val_specificity': [], 'val_f1': [],
     }
 
+    # Build output paths; seed suffix allows multi-seed comparison runs.
     model_path = (f'{model_ckpt}/best_model_seed_{seed}.pt' if seed is not None
                   else f'{model_ckpt}/best_model.pt')
     metric_path = (f'{model_ckpt}/best_model_metric_seed_{seed}.json' if seed is not None
                    else f'{model_ckpt}/best_model_metric.json')
-    train_result_path = (f'{model_ckpt}/train_result_seed_{seed}.csv' if seed is not None
-                         else f'{model_ckpt}/train_result.csv')
-    val_result_path = (f'{model_ckpt}/val_result_seed_{seed}.csv' if seed is not None
-                       else f'{model_ckpt}/val_result.csv')
+    train_result_path = (f'{model_ckpt}/results_train_seed_{seed}.csv' if seed is not None
+                         else f'{model_ckpt}/results_train.csv')
+    val_result_path = (f'{model_ckpt}/results_val_seed_{seed}.csv' if seed is not None
+                       else f'{model_ckpt}/results_val.csv')
     history_path = (f'{model_ckpt}/history_seed_{seed}.csv' if seed is not None
                     else f'{model_ckpt}/history.csv')
 
@@ -134,6 +172,7 @@ def train(model, num_epochs, optimizer, train_loader, val_loader, scheduler,
 
 
 def _validate_image_only(model, criterion, val_loader, device):
+    """Run one full pass over the validation loader and return all metrics."""
     model.eval()
     val_loss = []
     probs, preds, trues, paths = [], [], [], []

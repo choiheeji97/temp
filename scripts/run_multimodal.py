@@ -1,22 +1,26 @@
 """
-5-fold cross-validation for the multimodal model
-(image features from a pretrained ResNet18 + quantitative measurements).
+5-fold cross-validation for the multimodal model.
 
-The image-only model for each fold must be trained first via run_image_only.py,
-as its checkpoint is used to initialise the feature extractor.
+The multimodal model fuses 512-dim image features (extracted from a
+per-fold pretrained ResNet18 checkpoint) with quantitative measurements
+via a small MLP.  The image-only model for each fold **must be trained
+first** via ``run_image_only.py``, as its checkpoint is used to initialise
+the feature extractor.
 
 Usage (from project root):
     python scripts/run_multimodal.py
 
-Each fold's outputs are saved under:
-    <OUTPUT_BASE>/fold<k>/
-        best_model_multimodal.pt
-        best_model_metric_multimodal.json
-        dataset_statistics.json
-        class_weights.json
-        val_result_multimodal.csv
-        results_val.csv  /  results_test.csv
-        history_multimodal.csv
+Each fold's outputs are saved under <OUTPUT_BASE>/fold<k>/:
+    best_model_multimodal.pt
+    best_model_metric_multimodal.json
+    dataset_statistics.json
+    class_weights.json
+    results_train.csv              – train-split predictions at the best-F1 epoch
+    results_val.csv                – val-split predictions at the best-F1 epoch
+    test_inference.csv             – test-split predictions from final inference
+    metrics_test.json              – full test metrics (AUC, PR-AUC, Acc, Sen, Spe, Pre, F1)
+    history_multimodal.csv         – per-epoch metric history
+    config.json                    – hyperparameters used for this fold
 """
 
 import os
@@ -36,11 +40,9 @@ from src.train_multimodal import extract_features, train_multimodal
 from src.test import inference_multimodal
 
 # ── paths (edit before running) ──────────────────────────────────────────────
-
-DATASET_CSV      = 'path/to/final_dataset.csv'        # columns: filename, img_dir, label, fold1-fold5
-OUTPUT_BASE      = 'outputs/multimodal'
-IO_CHECKPOINT_BASE = 'outputs/image_only'             # directory containing fold1…fold5 from run_image_only.py
-
+DATASET_CSV        = 'path/to/final_dataset.csv'   # columns: filename, img_dir, label, fold1-fold5
+OUTPUT_BASE        = 'outputs/multimodal'
+IO_CHECKPOINT_BASE = 'outputs/image_only'          # directory containing fold1…fold5 from run_image_only.py
 # ─────────────────────────────────────────────────────────────────────────────
 
 QUANTI_COLUMNS = [
@@ -51,23 +53,24 @@ QUANTI_COLUMNS = [
 IMAGE_FEATURE_DIM = 512   # ResNet18 penultimate-layer dimension
 
 CFG = {
-    'EPOCHS':          50,
-    'LEARNING_RATE':   1e-5,
-    'BATCH_SIZE':      8,
-    'WEIGHT_DECAY':    1e-3,
-    'LABEL_SMOOTHING': 0.08,
+    'EPOCHS':           50,
+    'LEARNING_RATE':    1e-5,
+    'BATCH_SIZE':       8,
+    'WEIGHT_DECAY':     1e-3,
+    'LABEL_SMOOTHING':  0.08,
     'USE_CLASS_WEIGHT': True,
-    'SEED':            42,
-    'IMAGE_ENCODER':   'resnet18',
-    'N_LAYERS':        2,
-    'FIRST_HIDDEN':    384,
-    'HIDDEN_SIZE':     [32],
-    'USE_DROPOUT':     True,
-    'DROPOUT_RATE':    0.1,
+    'SEED':             42,
+    'IMAGE_ENCODER':    'resnet18',
+    'N_LAYERS':         2,
+    'FIRST_HIDDEN':     384,
+    'HIDDEN_SIZE':      [32],
+    'USE_DROPOUT':      True,
+    'DROPOUT_RATE':     0.1,
 }
 
 
 def run_fold(fold):
+    """Train and evaluate the multimodal model for a single fold."""
     model_ckpt = os.path.join(OUTPUT_BASE, f'fold{fold}')
     io_ckpt    = os.path.join(IO_CHECKPOINT_BASE, f'fold{fold}')
     os.makedirs(model_ckpt, exist_ok=True)
@@ -79,11 +82,11 @@ def run_fold(fold):
     val_df   = filelist[filelist[f'fold{fold}'] == 'val'].reset_index(drop=True)
     test_df  = filelist[filelist[f'fold{fold}'] == 'test'].reset_index(drop=True)
 
-    # Load the fold's pretrained image encoder
+    # Load the pretrained image encoder for this fold.
     model, img_size = get_model(CFG['IMAGE_ENCODER'], num_classes=2)
     model.to(device)
 
-    # Build datasets (uses train-set statistics from the IO checkpoint directory)
+    # Training split: compute and save per-channel normalisation statistics.
     train_dataset = CustomDataset(
         train_df['img_dir'].values, train_df['label'].values,
         img_size, train=True, model_ckpt=model_ckpt,
@@ -100,17 +103,20 @@ def run_fold(fold):
     train_loader = DataLoader(
         train_dataset, batch_size=CFG['BATCH_SIZE'],
         shuffle=True, drop_last=True, num_workers=0,
-        worker_init_fn=seed_worker, generator=torch.Generator().manual_seed(CFG['SEED']),
+        worker_init_fn=seed_worker,
+        generator=torch.Generator().manual_seed(CFG['SEED']),
     )
     val_loader = DataLoader(
         val_dataset, batch_size=CFG['BATCH_SIZE'],
         shuffle=False, num_workers=0,
-        worker_init_fn=seed_worker, generator=torch.Generator().manual_seed(CFG['SEED']),
+        worker_init_fn=seed_worker,
+        generator=torch.Generator().manual_seed(CFG['SEED']),
     )
     test_loader = DataLoader(
         test_dataset, batch_size=CFG['BATCH_SIZE'],
         shuffle=False, num_workers=0,
-        worker_init_fn=seed_worker, generator=torch.Generator().manual_seed(CFG['SEED']),
+        worker_init_fn=seed_worker,
+        generator=torch.Generator().manual_seed(CFG['SEED']),
     )
 
     fold_cfg = {**CFG, 'MODEL_CKPT': model_ckpt, 'IO_CKPT': io_ckpt,
@@ -118,7 +124,7 @@ def run_fold(fold):
     with open(os.path.join(model_ckpt, 'config.json'), 'w') as f:
         json.dump(fold_cfg, f, indent=4)
 
-    # Extract fixed image features using the pretrained IO model
+    # Extract fixed image features using the pretrained image-only encoder.
     train_feats, train_paths, train_labels = extract_features(
         model, train_loader, io_ckpt, device
     )
@@ -129,7 +135,7 @@ def run_fold(fold):
         model, test_loader, io_ckpt, device
     )
 
-    seed_everything(CFG['SEED'])   # re-seed before FC model initialisation
+    seed_everything(CFG['SEED'])   # re-seed before MLP weight initialisation
 
     fc_model = create_fc_model(
         input_size=IMAGE_FEATURE_DIM + len(QUANTI_COLUMNS),
@@ -159,10 +165,6 @@ def run_fold(fold):
         device=device,
     )
 
-    inference_multimodal(
-        best_model, val_feats, val_paths, val_df,
-        device, model_ckpt, CFG['BATCH_SIZE'], mode='val',
-    )
     inference_multimodal(
         best_model, test_feats, test_paths, test_df,
         device, model_ckpt, CFG['BATCH_SIZE'], mode='test',

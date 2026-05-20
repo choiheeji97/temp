@@ -1,3 +1,22 @@
+"""
+Training loop for the feature-only (quantitative measurements) MLP.
+
+The model is a small fully-connected network (see ``src/model.py``)
+trained directly on tabular quantitative features without any image data.
+Because no DataLoader is used, the per-epoch shuffle is implemented via
+``np.random.permutation`` seeded through the global ``seed_everything``
+call in the run script.
+
+Outputs saved per fold
+----------------------
+results_train.csv      – per-sample predictions at the best-F1 epoch (train split)
+results_val.csv        – per-sample predictions at the best-F1 epoch (val split)
+history_feature_only.csv – full per-epoch metric history
+best_model_feature_only.pt – saved model state dict
+best_model_metric_feature_only.json – metrics at the best-F1 epoch
+class_weights.json     – complement-frequency class weights used in training
+"""
+
 import copy
 import os
 import json
@@ -21,6 +40,33 @@ def train_feature_only(fc_model, quanti_columns,
                        train_df, val_df,
                        num_epochs, batch_size, lr, wd, label_smoothing, use_class_weight,
                        model_ckpt, device):
+    """Train the feature-only MLP and return the best model.
+
+    Parameters
+    ----------
+    fc_model : nn.Module
+        MLP created by ``create_fc_model``.
+    quanti_columns : list of str
+        Column names in ``train_df`` / ``val_df`` used as input features.
+    train_df, val_df : pd.DataFrame
+        Must contain columns listed in ``quanti_columns``, ``label``,
+        and ``img_dir`` (used to track sample identity in result CSVs).
+    num_epochs : int
+    batch_size : int
+    lr : float          Learning rate.
+    wd : float          Weight decay (L2 regularisation).
+    label_smoothing : float
+    use_class_weight : bool
+        Apply complement-frequency class weighting to the loss when True.
+    model_ckpt : str
+        Output directory.
+    device : torch.device
+
+    Returns
+    -------
+    best_model : nn.Module   (deepcopy at the best-F1 epoch)
+    best_val_f1 : float
+    """
     fc_model.to(device)
 
     X_train = train_df[quanti_columns].values.astype(np.float32)
@@ -61,7 +107,7 @@ def train_feature_only(fc_model, quanti_columns,
         train_loss = []
         probs, preds, trues, paths = [], [], [], []
 
-        # shuffle training data each epoch for unbiased gradient estimates
+        # Shuffle training data each epoch for unbiased gradient estimates.
         perm = np.random.permutation(len(X_train))
 
         for i in range(0, len(X_train), batch_size):
@@ -134,8 +180,8 @@ def train_feature_only(fc_model, quanti_columns,
                 {'image_path': paths, 'prob': probs, 'pred': preds, 'label': trues}
             )
             train_result['image_path'] = [p.split('/')[-1] for p in train_result['image_path']]
-            train_result.to_csv(os.path.join(model_ckpt, 'train_result_feature_only.csv'), index=False)
-            _val_result.to_csv(os.path.join(model_ckpt, 'val_result_feature_only.csv'), index=False)
+            train_result.to_csv(os.path.join(model_ckpt, 'results_train.csv'), index=False)
+            _val_result.to_csv(os.path.join(model_ckpt, 'results_val.csv'), index=False)
 
         pd.DataFrame(history).to_csv(
             os.path.join(model_ckpt, 'history_feature_only.csv'), index=False
@@ -145,6 +191,7 @@ def train_feature_only(fc_model, quanti_columns,
 
 
 def _validate_feature_only(fc_model, criterion, X_val, y_val, path_val, device, batch_size):
+    """Run one full pass over the validation set and return all metrics."""
     fc_model.eval()
     val_loss = []
     probs, preds, trues, paths = [], [], [], []

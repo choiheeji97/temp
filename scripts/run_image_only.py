@@ -1,18 +1,26 @@
 """
-5-fold cross-validation for the image-only model.
+5-fold cross-validation for the image-only CNN classifier.
+
+For each fold the script:
+  1. Splits the dataset according to the pre-assigned fold column.
+  2. Computes training-set normalisation statistics and saves them.
+  3. Trains a ResNet18 with class-weighted cross-entropy + label smoothing.
+  4. Runs inference on the held-out test split using the best checkpoint.
 
 Usage (from project root):
     python scripts/run_image_only.py
 
-Each fold's outputs are saved under:
-    <OUTPUT_BASE>/fold<k>/
-        best_model.pt
-        best_model_metric.json
-        dataset_statistics.json
-        class_weights.json
-        train_result.csv  /  val_result.csv
-        results_val.csv   /  results_test.csv
-        history.csv
+Each fold's outputs are saved under <OUTPUT_BASE>/fold<k>/:
+    best_model.pt
+    best_model_metric.json
+    dataset_statistics.json
+    class_weights.json
+    results_train.csv          – train-split predictions at the best-F1 epoch
+    results_val.csv            – val-split predictions at the best-F1 epoch
+    test_inference.csv         – test-split predictions from final inference
+    metrics_test.json          – full test metrics (AUC, PR-AUC, Acc, Sen, Spe, Pre, F1)
+    history.csv                – per-epoch metric history
+    config.json                – hyperparameters used for this fold
 """
 
 import os
@@ -32,24 +40,25 @@ from src.train_image_only import train
 from src.test import inference_image_only
 
 # ── paths (edit before running) ──────────────────────────────────────────────
-'path/to/final_dataset.csv'   # must have columns: filename, img_dir, label, fold1-fold5
-'outputs/image_only'
+DATASET_CSV = 'path/to/final_dataset.csv'   # must have columns: filename, img_dir, label, fold1-fold5
+OUTPUT_BASE = 'outputs/image_only'
 # ─────────────────────────────────────────────────────────────────────────────
 
 CFG = {
-    'EPOCHS':          500,
-    'LEARNING_RATE':   1e-5,
-    'BATCH_SIZE':      8,
-    'WEIGHT_DECAY':    1e-3,
-    'LABEL_SMOOTHING': 0.08,
+    'EPOCHS':           500,
+    'LEARNING_RATE':    1e-5,
+    'BATCH_SIZE':       8,
+    'WEIGHT_DECAY':     1e-3,
+    'LABEL_SMOOTHING':  0.08,
     'USE_CLASS_WEIGHT': True,
-    'SEED':            42,
-    'MODEL_NAME':      'resnet18',
-    'MODEL_PT':        True,
+    'SEED':             42,
+    'MODEL_NAME':       'resnet18',
+    'MODEL_PT':         True,
 }
 
 
 def run_fold(fold):
+    """Train and evaluate the image-only model for a single fold."""
     model_ckpt = os.path.join(OUTPUT_BASE, f'fold{fold}')
     os.makedirs(model_ckpt, exist_ok=True)
 
@@ -67,6 +76,7 @@ def run_fold(fold):
     )
     print(f'[fold {fold}] model={model.__class__.__name__}, img_size={img_size}')
 
+    # Training split: compute and save per-channel normalisation statistics.
     train_dataset = CustomDataset(
         train_df['img_dir'].values, train_df['label'].values,
         img_size, train=True, model_ckpt=model_ckpt,
@@ -76,16 +86,17 @@ def run_fold(fold):
         img_size, train=False, model_ckpt=model_ckpt,
     )
 
-   # g = torch.Generator().manual_seed(CFG['SEED'])
     train_loader = DataLoader(
         train_dataset, batch_size=CFG['BATCH_SIZE'],
         shuffle=True, drop_last=True, num_workers=0,
-        worker_init_fn=seed_worker, generator=torch.Generator().manual_seed(CFG['SEED']),
+        worker_init_fn=seed_worker,
+        generator=torch.Generator().manual_seed(CFG['SEED']),
     )
     val_loader = DataLoader(
         val_dataset, batch_size=CFG['BATCH_SIZE'],
         shuffle=False, num_workers=0,
-        worker_init_fn=seed_worker, generator=torch.Generator().manual_seed(CFG['SEED']),
+        worker_init_fn=seed_worker,
+        generator=torch.Generator().manual_seed(CFG['SEED']),
     )
 
     fold_cfg = {**CFG, 'MODEL_CKPT': model_ckpt, 'IMG_SIZE': img_size}
@@ -101,6 +112,7 @@ def run_fold(fold):
         None, CFG['LABEL_SMOOTHING'], device, model_ckpt,
     )
 
+    # Build test DataLoader after training so it loads from the saved statistics.
     test_dataset = CustomDataset(
         test_df['img_dir'].values, test_df['label'].values,
         img_size, train=False, model_ckpt=model_ckpt,
@@ -108,10 +120,10 @@ def run_fold(fold):
     test_loader = DataLoader(
         test_dataset, batch_size=CFG['BATCH_SIZE'],
         shuffle=False, num_workers=0,
-        worker_init_fn=seed_worker, generator=torch.Generator().manual_seed(CFG['SEED']),
+        worker_init_fn=seed_worker,
+        generator=torch.Generator().manual_seed(CFG['SEED']),
     )
 
-    inference_image_only(best_model, val_loader,  device, model_ckpt, mode='val')
     inference_image_only(best_model, test_loader, device, model_ckpt, mode='test')
 
 

@@ -1,3 +1,29 @@
+"""
+Training loop for the multimodal model.
+
+The multimodal model concatenates 512-dim image feature vectors (extracted
+from a pretrained ResNet18 image-only checkpoint) with quantitative
+measurements and feeds the combined representation into a small MLP.
+
+Workflow
+--------
+1. ``extract_features`` loads the pretrained image encoder and extracts
+   fixed feature vectors for the train / val / test splits.
+2. ``_build_enhanced_features`` concatenates each image feature vector with
+   the corresponding row of quantitative measurements.
+3. ``train_multimodal`` trains the MLP head on the combined features.
+
+Outputs saved per fold
+----------------------
+results_train.csv               – per-sample predictions at the best-F1 epoch (train split)
+results_val.csv                 – per-sample predictions at the best-F1 epoch (val split)
+history_multimodal.csv          – full per-epoch metric history
+best_model_multimodal.pt        – saved MLP state dict
+best_model_metric_multimodal.json – metrics at the best-F1 epoch
+val_result_multimodal.csv       – alias for results_val.csv (kept for training-time snapshots)
+class_weights.json              – complement-frequency class weights
+"""
+
 import copy
 import os
 import json
@@ -24,7 +50,28 @@ QUANTI_COLUMNS = [
 
 
 def extract_features(model, data_loader, checkpoint_path, device):
-    """Extract 512-dim feature vectors from the pretrained image encoder."""
+    """Extract 512-dim feature vectors from the pretrained image encoder.
+
+    The classification head (last child module) is stripped so the encoder
+    outputs pooled spatial features of shape (B, 512).
+
+    Parameters
+    ----------
+    model : nn.Module
+        Full ResNet18 model (with ``fc`` head); weights are loaded from
+        ``checkpoint_path/best_model.pt`` inside this function.
+    data_loader : DataLoader
+        Yields (path, image, label) tuples.
+    checkpoint_path : str
+        Directory containing ``best_model.pt``.
+    device : torch.device
+
+    Returns
+    -------
+    features : torch.Tensor  shape (N, 512)
+    paths    : list of str
+    labels   : list of int
+    """
     model.load_state_dict(torch.load(checkpoint_path + '/best_model.pt',
                                      map_location=device))
     feature_extractor = nn.Sequential(*list(model.children())[:-1])
@@ -37,7 +84,7 @@ def extract_features(model, data_loader, checkpoint_path, device):
         for path, images, labels in tqdm(iter(data_loader), desc='Extracting features'):
             images = images.to(device)
             feats = feature_extractor(images)
-            feats = feats.squeeze(-1).squeeze(-1)  # [B, 512, 1, 1] -> [B, 512]
+            feats = feats.squeeze(-1).squeeze(-1)  # [B, 512, 1, 1] → [B, 512]
             features_list.append(feats.cpu())
             paths_list.extend(path)
             labels_list.extend(labels.numpy())
@@ -48,7 +95,19 @@ def extract_features(model, data_loader, checkpoint_path, device):
 def _build_enhanced_features(image_features, paths_list, df):
     """Concatenate image feature vectors with quantitative measurements.
 
-    Returns an (N, 512+10) float32 array.
+    Each sample's 512-dim image feature is appended with the 10-dim
+    quantitative measurement vector looked up by image path, producing an
+    (N, 522) float32 array.
+
+    Parameters
+    ----------
+    image_features : torch.Tensor   shape (N, 512)
+    paths_list : list of str        absolute image paths (same order as features)
+    df : pd.DataFrame               must contain ``img_dir`` and ``QUANTI_COLUMNS``
+
+    Returns
+    -------
+    np.ndarray  shape (N, 512 + len(QUANTI_COLUMNS)), dtype float32
     """
     assert len(image_features) == len(paths_list), (
         f"image_features length ({len(image_features)}) != paths_list length ({len(paths_list)})"
@@ -66,6 +125,36 @@ def train_multimodal(fc_model,
                      val_features, val_paths, val_labels, val_df,
                      num_epochs, batch_size, optimizer, scheduler, label_smoothing,
                      model_ckpt, device):
+    """Train the multimodal MLP and return the best model.
+
+    Parameters
+    ----------
+    fc_model : nn.Module
+        MLP created by ``create_fc_model`` with
+        input_size = IMAGE_FEATURE_DIM + len(QUANTI_COLUMNS).
+    train_loader : DataLoader
+        Used solely to compute class weights (iterates once at startup).
+    train_features : torch.Tensor   shape (N_train, 512)
+    train_paths    : list of str
+    train_labels   : list of int
+    train_df       : pd.DataFrame   must contain ``img_dir`` and ``QUANTI_COLUMNS``
+    val_features   : torch.Tensor   shape (N_val, 512)
+    val_paths      : list of str
+    val_labels     : list of int
+    val_df         : pd.DataFrame
+    num_epochs     : int
+    batch_size     : int
+    optimizer      : torch.optim.Optimizer
+    scheduler      : lr_scheduler or None
+    label_smoothing: float
+    model_ckpt     : str    output directory
+    device         : torch.device
+
+    Returns
+    -------
+    best_model : nn.Module   (deepcopy at the best-F1 epoch)
+    best_val_f1 : float
+    """
     fc_model.to(device)
 
     train_labels_arr = np.array(train_labels)
@@ -96,9 +185,9 @@ def train_multimodal(fc_model,
     for epoch in range(1, num_epochs + 1):
         fc_model.train()
         train_loss = []
-        probs, preds, trues = [], [], []
+        probs, preds, trues, paths = [], [], [], []
 
-        # shuffle training data each epoch for unbiased gradient estimates
+        # Shuffle training data each epoch for unbiased gradient estimates.
         perm = np.random.permutation(len(enhanced_train))
 
         for i in range(0, len(enhanced_train), batch_size):
@@ -109,7 +198,7 @@ def train_multimodal(fc_model,
             batch_y = torch.tensor(
                 train_labels_arr[batch_idx], dtype=torch.long
             ).to(device)
-            
+
             optimizer.zero_grad()
             output = fc_model(batch_X)
             loss = criterion(output, batch_y)
@@ -121,6 +210,7 @@ def train_multimodal(fc_model,
             probs += probability.detach().cpu().numpy().tolist()
             preds += output.argmax(dim=1).detach().cpu().numpy().tolist()
             trues += batch_y.detach().cpu().numpy().tolist()
+            paths += [train_paths[idx] for idx in batch_idx]
 
         _train_loss = np.mean(train_loss)
         _train_auc = roc_auc_score(trues, probs)
@@ -173,7 +263,12 @@ def train_multimodal(fc_model,
             with open(os.path.join(model_ckpt, 'best_model_metric_multimodal.json'), 'w') as f:
                 json.dump(best_metric, f, indent=4)
 
-            _val_result.to_csv(os.path.join(model_ckpt, 'val_result_multimodal.csv'), index=False)
+            train_result = pd.DataFrame(
+                {'image_path': paths, 'prob': probs, 'pred': preds, 'label': trues}
+            )
+            train_result['image_path'] = [p.split('/')[-1] for p in train_result['image_path']]
+            train_result.to_csv(os.path.join(model_ckpt, 'results_train.csv'), index=False)
+            _val_result.to_csv(os.path.join(model_ckpt, 'results_val.csv'), index=False)
 
         pd.DataFrame(history).to_csv(
             os.path.join(model_ckpt, 'history_multimodal.csv'), index=False
@@ -183,7 +278,8 @@ def train_multimodal(fc_model,
 
 
 def _validate_multimodal(fc_model, criterion, val_features, val_labels, val_paths,
-                         device, batch_size):
+                          device, batch_size):
+    """Run one full pass over the validation set and return all metrics."""
     fc_model.eval()
     val_loss = []
     probs, preds, trues, paths = [], [], [], []
