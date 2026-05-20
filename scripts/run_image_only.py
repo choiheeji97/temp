@@ -39,6 +39,7 @@ from src.model import get_model
 from src.train_image_only import train
 from src.test import inference_image_only
 from src.cv_summary import save_cv_summary
+from src.cv_ensemble import save_ensemble
 
 # ── paths (edit before running) ──────────────────────────────────────────────
 DATASET_CSV = 'path/to/final_dataset.csv'   # must have columns: filename, img_dir, label, fold1-fold5
@@ -134,3 +135,4 @@ if __name__ == '__main__':
         run_fold(fold)
 
     save_cv_summary('image_only', OUTPUT_BASE)
+    save_ensemble(OUTPUT_BASE)
