@@ -34,7 +34,7 @@ All three models are evaluated under 5-fold cross-validation.  Best-epoch select
     ├── train_multimodal.py     # Feature extraction + training loop for multimodal MLP
     ├── test.py                 # Inference functions shared by all three pipelines
     ├── cv_summary.py           # CV summary logic imported by run_*.py
-    ├── cv_ensemble.py          # Ensemble logic imported by run_feature_only.py
+    ├── cv_ensemble.py          # Ensemble logic imported by run_*.py
     └── utils.py                # Class-weight computation helpers
 ```
 
@@ -94,7 +94,7 @@ To regenerate these files independently (e.g. after changing thresholds):
 
 ```bash
 python scripts/cv_summary.py   # cv_summary.csv for all three models
-python scripts/cv_ensemble.py  # ensemble outputs (feature_only by default; edit OUTPUT_BASE for others)
+python scripts/cv_ensemble.py  # ensemble outputs (test_inference_ensemble.csv, metrics_test_ensemble.json) for all three models
 ```
 
 ---
